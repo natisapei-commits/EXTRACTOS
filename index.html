@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analizador de Extractos Bancarios</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; padding: 24px 16px; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); max-width: 860px; margin: 0 auto; overflow: hidden; }
+  .header { border-bottom: 3px solid #2c3e7a; padding: 20px 28px; }
+  .header .label { font-size: 11px; letter-spacing: 2px; color: #7f8c8d; text-transform: uppercase; margin-bottom: 4px; }
+  .header h1 { font-size: 22px; font-weight: 700; color: #2c3e7a; }
+  .header p { font-size: 13px; color: #7f8c8d; margin-top: 4px; }
+  .body { padding: 24px 28px; }
+  .dropzone { border: 2px dashed #bdc3c7; border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; background: #fafafa; transition: all .2s; margin-bottom: 16px; }
+  .dropzone.has-file { border-color: #2c3e7a; background: #f0f4ff; }
+  .dropzone .icon { font-size: 32px; margin-bottom: 8px; }
+  .btn { width: 100%; padding: 13px; border-radius: 8px; border: none; background: #2c3e7a; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; letter-spacing: .5px; transition: background .2s; }
+  .btn:disabled { background: #bdc3c7; cursor: default; }
+  .btn:not(:disabled):hover { background: #1a2a5e; }
+  .msg { margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 14px; }
+  .msg.error { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; }
+  .msg.warn { background: #fffbea; border-left: 4px solid #f0c040; color: #7d6000; }
+  .result { margin-top: 28px; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; }
+  .result-header { background: #2c3e7a; color: #fff; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+  .result-header .rh-item { font-size: 13px; }
+  .result-header .rh-item span { opacity: .7; font-size: 11px; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead tr { background: #ecf0f1; }
+  th { padding: 10px 14px; font-weight: 600; color: #2c3e7a; border-bottom: 2px solid #bdc3c7; font-size: 12px; letter-spacing: .5px; }
+  th:first-child { text-align: left; } th:not(:first-child) { text-align: right; }
+  td { padding: 9px 14px; border-bottom: 1px solid #ecf0f1; }
+  td:first-child { font-weight: 500; } td:not(:first-child) { text-align: right; }
+  tbody tr:nth-child(even) { background: #f8f9fa; }
+  tfoot tr { background: #2c3e7a; color: #fff; font-weight: 700; }
+  tfoot td { padding: 11px 14px; border: none; }
+  .deb { color: #c0392b; } .cred { color: #27ae60; }
+  .neg { color: #c0392b; font-weight: 600; } .pos { color: #27ae60; font-weight: 600; }
+  .muted { color: #bbb; }
+  .export-bar { background: #f8f9fa; padding: 14px 20px; display: flex; justify-content: flex-end; border-top: 1px solid #ecf0f1; }
+  .btn-export { padding: 9px 22px; background: #27ae60; color: #fff; border: none; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .btn-export:hover { background: #219a52; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="label">Herramienta Contable</div>
+    <h1>Analizador de Extractos Bancarios</h1>
+    <p>Síntesis automatizada por categoría · Exportación CSV</p>
+  </div>
+  <div class="body">
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:6px">🔑 API Key de Anthropic</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-..." style="width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:monospace">
+      <div style="font-size:11px;color:#999;margin-top:4px">No se guarda en ningún lado. Se usa solo para llamar a la API.</div>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📄</div>
+      <div id="dropLabel">Arrastrá o hacé clic para seleccionar el extracto</div>
+      <div style="font-size:12px;color:#7f8c8d;margin-top:4px">PDF · CSV · XLSX (texto)</div>
+      <input type="file" id="fileInput" accept=".pdf,.csv,.xlsx,.xls" style="display:none">
+    </div>
+    <button class="btn" id="btnAnalyze" disabled>Analizar Extracto</button>
+    <div id="errorBox" class="msg error" style="display:none"></div>
+    <div id="warnBox" class="msg warn" style="display:none"></div>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script>
+const ANTHROPIC_API_KEY = () => document.getElementById('apiKey').value.trim();
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let selectedFile = null, lastResult = null;
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const btnAnalyze = document.getElementById('btnAnalyze');
+const errorBox = document.getElementById('errorBox');
+const warnBox = document.getElementById('warnBox');
+const resultDiv = document.getElementById('result');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => e.preventDefault());
+dropzone.addEventListener('drop', e => { e.preventDefault(); setFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => setFile(e.target.files[0]));
+
+function setFile(f) {
+  if (!f) return;
+  selectedFile = f;
+  dropzone.classList.add('has-file');
+  document.getElementById('dropLabel').innerHTML =
+    `<strong style="color:#2c3e7a">${f.name}</strong><br><span style="font-size:12px;color:#7f8c8d">${(f.size/1024).toFixed(1)} KB · Clic para cambiar</span>`;
+  btnAnalyze.disabled = false;
+  errorBox.style.display = warnBox.style.display = 'none';
+  resultDiv.innerHTML = '';
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function extractPdfText(file) {
+  const ab = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(x => x.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+btnAnalyze.addEventListener('click', async () => {
+  const apiKey = ANTHROPIC_API_KEY();
+  if (!apiKey) { errorBox.textContent = '⚠️ Ingresá tu API Key antes de continuar.'; errorBox.style.display = 'block'; return; }
+  errorBox.style.display = warnBox.style.display = 'none';
+  resultDiv.innerHTML = '';
+  btnAnalyze.disabled = true;
+  btnAnalyze.textContent = '⏳ Extrayendo texto...';
+
+  try {
+    let text = selectedFile.name.endsWith('.pdf')
+      ? await extractPdfText(selectedFile)
+      : await selectedFile.text();
+
+    if (!text.trim()) throw new Error('No se pudo extraer texto. Probá exportando como CSV.');
+
+    btnAnalyze.textContent = '🔍 Analizando movimientos...';
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        system: `Sos un asistente especializado en análisis de extractos bancarios para contadores públicos argentinos.
+INSTRUCCIÓN CRÍTICA: Tu respuesta debe ser EXCLUSIVAMENTE un objeto JSON. Sin texto antes ni después. Sin markdown. SOLO JSON.
+Agrupá los movimientos en estas categorías (solo las que tengan movimientos): Transferencias Recibidas, Transferencias Emitidas, Depósitos, Retiros / Extracciones, Cheques Acreditados, Cheques Debitados, Comisiones Bancarias, Intereses Acreditados, Intereses Debitados, Pagos de Servicios, Impuesto Débito y Crédito Bancario (IDCB), IVA, Retenciones IIBB, Retenciones Ganancias, Otros Movimientos.
+Reglas: no inventés movimientos, no modificués montos, solo agrupás y sumás.
+JSON: {"periodo":"Mes Año","cuenta":"descripción o null","moneda":"ARS","advertencias":[],"categorias":[{"concepto":"nombre","debitos":0.00,"creditos":0.00}],"total_debitos":0.00,"total_creditos":0.00,"saldo_neto":0.00}`,
+        messages: [{ role: 'user', content: `Analizá este extracto bancario:\n\n${text.slice(0, 20000)}` }]
+      })
+    });
+
+    const raw = await resp.json();
+    if (raw.error) throw new Error('API: ' + raw.error.message);
+    const txt = (raw.content || []).map(b => b.text || '').join('').trim();
+    const match = txt.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Respuesta inesperada del modelo.');
+    lastResult = JSON.parse(match[0]);
+    renderResult(lastResult);
+
+  } catch(e) {
+    errorBox.textContent = '⚠️ ' + e.message;
+    errorBox.style.display = 'block';
+  } finally {
+    btnAnalyze.disabled = false;
+    btnAnalyze.textContent = 'Analizar Extracto';
+  }
+});
+
+function renderResult(d) {
+  if (d.advertencias?.length) {
+    warnBox.innerHTML = d.advertencias.map(a => '⚠️ ' + a).join('<br>');
+    warnBox.style.display = 'block';
+  }
+  const rows = d.categorias.map(c => {
+    const neto = c.creditos - c.debitos;
+    return `<tr>
+      <td>${c.concepto}</td>
+      <td class="${c.debitos > 0 ? 'deb' : 'muted'}">${c.debitos > 0 ? fmt(c.debitos) : '—'}</td>
+      <td class="${c.creditos > 0 ? 'cred' : 'muted'}">${c.creditos > 0 ? fmt(c.creditos) : '—'}</td>
+      <td class="${neto < 0 ? 'neg' : neto > 0 ? 'pos' : ''}">${fmt(neto)}</td>
+    </tr>`;
+  }).join('');
+  resultDiv.innerHTML = `
+    <div class="result">
+      <div class="result-header">
+        <div class="rh-item"><span>PERÍODO</span><strong>${d.periodo}</strong></div>
+        ${d.cuenta ? `<div class="rh-item"><span>CUENTA</span><strong>${d.cuenta}</strong></div>` : ''}
+        <div class="rh-item"><span>MONEDA</span><strong>${d.moneda}</strong></div>
+      </div>
+      <table>
+        <thead><tr><th>Concepto</th><th>Débitos</th><th>Créditos</th><th>Saldo Neto</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td>TOTAL</td>
+          <td>${fmt(d.total_debitos)}</td>
+          <td>${fmt(d.total_creditos)}</td>
+          <td style="color:${d.saldo_neto < 0 ? '#ff8a80' : '#a5d6a7'}">${fmt(d.saldo_neto)}</td>
+        </tr></tfoot>
+      </table>
+      <div class="export-bar">
+        <button class="btn-export" onclick="exportCSV()">⬇️ Exportar CSV / Excel</button>
+      </div>
+    </div>`;
+}
+
+function exportCSV() {
+  if (!lastResult) return;
+  const d = lastResult;
+  const rows = [
+    [`SÍNTESIS DE EXTRACTO BANCARIO — ${d.periodo}${d.cuenta ? ' — ' + d.cuenta : ''} — Moneda: ${d.moneda}`],
+    [], ['Concepto','Débitos','Créditos','Saldo Neto'],
+    ...d.categorias.map(c => [c.concepto, c.debitos, c.creditos, c.creditos - c.debitos]),
+    [], ['TOTAL', d.total_debitos, d.total_creditos, d.saldo_neto]
+  ];
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell ?? '');
+    return s.includes(',') ? `"${s}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `extracto_${d.periodo.replace(/\s/g, '_')}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
