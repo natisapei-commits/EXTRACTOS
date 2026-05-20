@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Analizador de Extractos Bancarios</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; padding: 24px 16px; }
@@ -213,61 +212,55 @@ function exportCSV() {
   if (!lastResult) return;
   const d = lastResult;
 
-  const wb = XLSX.utils.book_new();
-  const ws = {};
+  const fmt = n => Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const color = n => n < 0 ? '#C0392B' : n > 0 ? '#27AE60' : '#333';
 
-  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12 }, fill: { fgColor: { rgb: '2C3E7A' } }, alignment: { horizontal: 'center' } };
-  const subHeaderStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '2C3E7A' } }, alignment: { horizontal: 'center' } };
-  const colHeaderStyle = { font: { bold: true, color: { rgb: '2C3E7A' } }, fill: { fgColor: { rgb: 'D6DCF0' } }, alignment: { horizontal: 'center' }, border: { bottom: { style: 'medium', color: { rgb: '2C3E7A' } } } };
-  const totalStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2C3E7A' } }, alignment: { horizontal: 'right' } };
-  const totalLabelStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2C3E7A' } } };
-  const numStyle = { numFmt: '#,##0.00', alignment: { horizontal: 'right' } };
-  const numRedStyle = { numFmt: '#,##0.00', alignment: { horizontal: 'right' }, font: { color: { rgb: 'C0392B' } } };
-  const numGreenStyle = { numFmt: '#,##0.00', alignment: { horizontal: 'right' }, font: { color: { rgb: '27AE60' } } };
-  const rowEvenStyle = { fill: { fgColor: { rgb: 'F8F9FA' } } };
-
-  function cell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
-
-  // Fila 1: título principal
-  ws['A1'] = cell(`SÍNTESIS DE EXTRACTO BANCARIO — ${d.periodo}${d.cuenta ? ' — ' + d.cuenta : ''} — Moneda: ${d.moneda}`, headerStyle);
-  ws['A1'].t = 's';
-
-  // Fila 2: vacía
-  // Fila 3: encabezados de columna
-  ws['A3'] = cell('Concepto', colHeaderStyle);
-  ws['B3'] = cell('Débitos', colHeaderStyle);
-  ws['C3'] = cell('Créditos', colHeaderStyle);
-  ws['D3'] = cell('Saldo Neto', colHeaderStyle);
-
-  // Filas de datos
-  d.categorias.forEach((c, i) => {
-    const row = i + 4;
+  const rows = d.categorias.map((c, i) => {
     const neto = c.creditos - c.debitos;
-    const bg = i % 2 === 0 ? {} : rowEvenStyle;
-    ws[`A${row}`] = cell(c.concepto, { ...bg, font: { bold: false } });
-    ws[`B${row}`] = { v: c.debitos, t: 'n', s: { ...numRedStyle, ...(i % 2 !== 0 ? { fill: rowEvenStyle.fill } : {}) } };
-    ws[`C${row}`] = { v: c.creditos, t: 'n', s: { ...numGreenStyle, ...(i % 2 !== 0 ? { fill: rowEvenStyle.fill } : {}) } };
-    ws[`D${row}`] = { v: neto, t: 'n', s: { ...( neto < 0 ? numRedStyle : numGreenStyle ), ...(i % 2 !== 0 ? { fill: rowEvenStyle.fill } : {}) } };
-  });
+    const bg = i % 2 === 0 ? '#FFFFFF' : '#F4F6FB';
+    return `<tr style="background:${bg}">
+      <td style="padding:8px 12px;border:1px solid #ddd;font-weight:500">${c.concepto}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;color:#C0392B">${c.debitos > 0 ? fmt(c.debitos) : '—'}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;color:#27AE60">${c.creditos > 0 ? fmt(c.creditos) : '—'}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;color:${color(neto)};font-weight:600">${fmt(neto)}</td>
+    </tr>`;
+  }).join('');
 
-  // Fila de totales
-  const totalRow = d.categorias.length + 4;
-  ws[`A${totalRow}`] = cell('TOTAL', totalLabelStyle);
-  ws[`B${totalRow}`] = { v: d.total_debitos, t: 'n', s: { ...totalStyle, numFmt: '#,##0.00' } };
-  ws[`C${totalRow}`] = { v: d.total_creditos, t: 'n', s: { ...totalStyle, numFmt: '#,##0.00' } };
-  ws[`D${totalRow}`] = { v: d.saldo_neto, t: 'n', s: { ...totalStyle, numFmt: '#,##0.00', font: { bold: true, color: { rgb: d.saldo_neto < 0 ? 'FF8A80' : 'A5D6A7' } } } };
+  const html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="UTF-8">
+    <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+    <x:Name>${d.periodo}</x:Name>
+    <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+    </head><body>
+    <table style="font-family:Calibri,Arial,sans-serif;font-size:12px;border-collapse:collapse;width:700px">
+      <tr>
+        <td colspan="4" style="background:#2C3E7A;color:#fff;font-size:14px;font-weight:bold;padding:12px 16px;text-align:center">
+          SÍNTESIS DE EXTRACTO BANCARIO — ${d.periodo}${d.cuenta ? ' — ' + d.cuenta : ''} — Moneda: ${d.moneda}
+        </td>
+      </tr>
+      <tr style="background:#D6DCF0">
+        <th style="padding:9px 12px;border:1px solid #bbb;color:#2C3E7A;font-weight:bold;text-align:left;width:320px">Concepto</th>
+        <th style="padding:9px 12px;border:1px solid #bbb;color:#2C3E7A;font-weight:bold;text-align:right;width:120px">Débitos</th>
+        <th style="padding:9px 12px;border:1px solid #bbb;color:#2C3E7A;font-weight:bold;text-align:right;width:120px">Créditos</th>
+        <th style="padding:9px 12px;border:1px solid #bbb;color:#2C3E7A;font-weight:bold;text-align:right;width:120px">Saldo Neto</th>
+      </tr>
+      ${rows}
+      <tr style="background:#2C3E7A">
+        <td style="padding:10px 12px;border:1px solid #1a2a5e;color:#fff;font-weight:bold;font-size:13px">TOTAL</td>
+        <td style="padding:10px 12px;border:1px solid #1a2a5e;color:#fff;font-weight:bold;text-align:right">${fmt(d.total_debitos)}</td>
+        <td style="padding:10px 12px;border:1px solid #1a2a5e;color:#fff;font-weight:bold;text-align:right">${fmt(d.total_creditos)}</td>
+        <td style="padding:10px 12px;border:1px solid #1a2a5e;font-weight:bold;text-align:right;color:${d.saldo_neto < 0 ? '#FF8A80' : '#A5D6A7'}">${fmt(d.saldo_neto)}</td>
+      </tr>
+    </table>
+    </body></html>`;
 
-  // Merge título
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-
-  // Anchos de columna
-  ws['!cols'] = [{ wch: 38 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
-
-  // Rango
-  ws['!ref'] = `A1:D${totalRow}`;
-
-  XLSX.utils.book_append_sheet(wb, ws, d.periodo);
-  XLSX.writeFile(wb, `extracto_${d.periodo.replace(/\s/g, '_')}.xlsx`);
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `extracto_${d.periodo.replace(/\s/g, '_')}.xls`;
+  a.click();
 }
 </script>
 </body>
