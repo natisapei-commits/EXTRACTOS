@@ -144,13 +144,13 @@ btnAnalyze.addEventListener('click', async () => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 4000,
+        max_tokens: 8000,
         system: `Sos un asistente especializado en análisis de extractos bancarios para contadores públicos argentinos.
 INSTRUCCIÓN CRÍTICA: Tu respuesta debe ser EXCLUSIVAMENTE un objeto JSON. Sin texto antes ni después. Sin markdown. SOLO JSON.
 Agrupá los movimientos en estas categorías (solo las que tengan movimientos): Transferencias Recibidas, Transferencias Emitidas, Depósitos, Retiros / Extracciones, Cheques Acreditados, Cheques Debitados, Comisiones Bancarias, Intereses Acreditados, Intereses Debitados, Pagos de Servicios, Impuesto Débito y Crédito Bancario (IDCB), IVA, Retenciones IIBB, Retenciones Ganancias, Otros Movimientos.
 Reglas: no inventés movimientos, no modificués montos, solo agrupás y sumás.
 JSON: {"periodo":"Mes Año","cuenta":"descripción o null","moneda":"ARS","advertencias":[],"categorias":[{"concepto":"nombre","debitos":0.00,"creditos":0.00}],"total_debitos":0.00,"total_creditos":0.00,"saldo_neto":0.00}`,
-        messages: [{ role: 'user', content: `Analizá este extracto bancario:\n\n${text.slice(0, 20000)}` }]
+        messages: [{ role: 'user', content: `Analizá este extracto bancario:\n\n${text.slice(0, 60000)}` }]
       })
     });
 
